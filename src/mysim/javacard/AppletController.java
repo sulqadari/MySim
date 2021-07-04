@@ -50,6 +50,13 @@ public class AppletController
 
     protected static void updatePin(byte[] pinArray, short offset, byte length)
     {
+        boolean isValid = pin.isValidated();
+
+        if (!isValid)
+        {
+            PINException.throwIt(PINController.PIN_NOT_VERIFIED);
+        }
+
         if (pinArray == null)
         {
             ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -60,9 +67,9 @@ public class AppletController
             PINException.throwIt(PINException.ILLEGAL_VALUE);
         }
 
-        JCSystem.beginTransaction();
+        JCSystem.beginTransaction();            //For the sake of PIN integrity...
         pin.update(pinArray, offset, length);
-        JCSystem.commitTransaction();
+        JCSystem.commitTransaction();           //...PIN must be updated using atomicity facility.
     }
 
     protected boolean resetPin()

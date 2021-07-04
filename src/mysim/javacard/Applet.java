@@ -61,6 +61,6 @@ public class Applet extends javacard.framework.Applet
     public boolean select()
     {
        controller.resetPin();
-        return true;
+       return true;
     }
 }

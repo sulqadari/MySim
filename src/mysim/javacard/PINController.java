@@ -7,26 +7,37 @@ public class PINController extends OwnerPIN
 {
     final static short PIN_IS_BLOCKED   = (short)0x6983;
     final static short PIN_NOT_VERIFIED = (short)0x6982;
-    private short PIN_LIMIT_COUNTER     = (short)0x63C0;
+    private short pinLimitCounter       = (short)0x63C0;
 
     public PINController(byte tryLimit, byte maxPINSize) throws PINException
     {
         super(tryLimit, maxPINSize);
     }
 
+    /**
+     * Assigns <code>pinLimitCounter</code> with <code>OwnerPIN.tryLimit</code> initial value.<br>
+     * To prevent redundant EEPROM writing operations, this method checks for correct PIN input<br>
+     * from the first attempt.
+     * @param value
+     */
     public void setPinCounter(byte value)
     {
-        PIN_LIMIT_COUNTER &= (byte)0xF0;
-        PIN_LIMIT_COUNTER += value;
+        if ((short)(pinLimitCounter & (short)0x000F) == (short)value)
+        {
+            return;
+        }
+
+        pinLimitCounter &= (short)0xFFF0;
+        pinLimitCounter += value;
     }
 
     public void decrementLimitCounter()
     {
-        PIN_LIMIT_COUNTER--;
+        pinLimitCounter--;
     }
 
     public short getLimitCounter()
     {
-        return PIN_LIMIT_COUNTER;
+        return pinLimitCounter;
     }
 }
