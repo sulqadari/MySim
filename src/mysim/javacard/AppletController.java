@@ -28,7 +28,6 @@ public class AppletController
     {
         byte[] buffer   = apdu.getBuffer();
         byte pinLength  = (byte)apdu.setIncomingAndReceive();
-        checkPin(buffer, ISO7816.OFFSET_CDATA, pinLength);
 
         if (buffer[ISO7816.OFFSET_CLA] != CLA_BYTE)
         {
@@ -76,7 +75,7 @@ public class AppletController
     {
         byte attemptsLeft = pin.getTriesRemaining();
 
-        //If attempts exceeded limit
+        //If attempts exceed limit
         if (attemptsLeft <= 0)
         {
             PINException.throwIt(PINController.PIN_IS_BLOCKED);
@@ -87,18 +86,18 @@ public class AppletController
             ISOException.throwIt(ISO7816.SW_WRONG_DATA);
         }
 
-        boolean isSet = pin.check(buffer, pinOffset, pinLength);
+        boolean isSet = pin.check(buffer, pinOffset, pinLength);    //verify PIN
 
-        if (isSet)
+        if (isSet)                                                  //if PIN successfully verified...
         {
-            pin.reset();
-            pin.setPinCounter(attemptsLeft);
+            attemptsLeft = pin.getTriesRemaining();
+            pin.setPinCounter(attemptsLeft);                        //...reset SW_63Cx to initial value
         }
-        else
+        else                                                        //Else...
         {
-            pin.decrementLimitCounter();
-            short triesCounter = pin.getLimitCounter();
-            ISOException.throwIt(triesCounter);
+            pin.decrementLimitCounter();                            //...decrement SW_63Cx...
+            short triesCounter = pin.getLimitCounter();             //...get current SW_63Cx value...
+            ISOException.throwIt(triesCounter);                     //...and pass it as exception argument
         }
     }
 }

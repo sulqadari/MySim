@@ -63,10 +63,4 @@ public class Applet extends javacard.framework.Applet
        controller.resetPin();
         return true;
     }
-
-    @Override
-    public void deselect()
-    {
-        controller.resetPin();
-    }
 }
