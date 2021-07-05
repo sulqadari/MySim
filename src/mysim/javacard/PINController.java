@@ -5,9 +5,13 @@ import javacard.framework.PINException;
 
 public class PINController extends OwnerPIN
 {
-    final static short PIN_IS_BLOCKED   = (short)0x6983;
-    final static short PIN_NOT_VERIFIED = (short)0x6982;
-    private short pinLimitCounter       = (short)0x63C0;
+    final static byte INS_VERIFY_PIN            = (byte)0x20;
+    final static byte INS_UPDATE_PIN            = (byte)0x22;
+
+
+    final static short PIN_IS_BLOCKED           = (short)0x6983;
+    final static short PIN_NOT_VERIFIED         = (short)0x6982;
+    private short pinLimitCounter               = (short)0x63C0;
 
     public PINController(byte tryLimit, byte maxPINSize) throws PINException
     {

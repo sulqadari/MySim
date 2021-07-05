@@ -9,8 +9,6 @@ public class AppletController
     private static final byte APPLET_LIFE_PHASE_USE     = (byte)0x07;
 
     private static final byte CLA_BYTE                  = (byte)0x80;
-    private static final byte INS_VERIFY_PIN            = (byte)0x20;
-    private static final byte INS_UPDATE_PIN            = (byte)0x22;
 
     private static PINController pin                    = null;
     private RSAController rsa                           = null;
@@ -42,6 +40,10 @@ public class AppletController
             case INS_UPDATE_PIN:
             {
                 updatePin(buffer, ISO7816.OFFSET_CDATA, pinLength);
+            }break;
+            case INS_GENERATE_AES_KEY:
+            {
+
             }break;
             default: ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
         }
