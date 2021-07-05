@@ -16,27 +16,30 @@ public class PINController extends OwnerPIN
 
     /**
      * Assigns <code>pinLimitCounter</code> with <code>OwnerPIN.tryLimit</code> initial value.<br>
-     * To prevent redundant EEPROM writing operations, this method checks for correct PIN input<br>
-     * from the first attempt.
-     * @param value
+     * To prevent redundant EEPROM writing operations this method checks for correct PIN input
+     * at the first try.
+     * @param initTriesCounter     initial tries counter value which retreived from the
+     *                             <code>OwnerPIN.getTriesRemaining()</code> method invocation.<br>
+     *                             When the correct PIN is entered the <code>OwnerPIN.check()</code> method<br>
+     *                             sets the tries counter to its maximum value.
      */
-    public void setPinCounter(byte value)
+    protected void setPinCounter(byte initTriesCounter)
     {
-        if ((short)(pinLimitCounter & (short)0x000F) == (short)value)
+        if ((short)(pinLimitCounter & (short)0x000F) == (short)initTriesCounter)
         {
             return;
         }
 
         pinLimitCounter &= (short)0xFFF0;
-        pinLimitCounter += value;
+        pinLimitCounter += initTriesCounter;
     }
 
-    public void decrementLimitCounter()
+    protected void decrementLimitCounter()
     {
         pinLimitCounter--;
     }
 
-    public short getLimitCounter()
+    protected short getLimitCounter()
     {
         return pinLimitCounter;
     }
