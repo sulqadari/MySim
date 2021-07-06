@@ -1,6 +1,7 @@
 package mysim.javacard;
 
 import javacard.framework.*;
+import javacardx.crypto.Cipher;
 
 public class AppletController
 {
@@ -31,28 +32,72 @@ public class AppletController
     protected void process(APDU apdu)
     {
         byte[] buffer   = apdu.getBuffer();
-        byte pinLength;
-
-        if (buffer[ISO7816.OFFSET_CLA] != CLA_BYTE)
+        
+        byte cla		= buffer[ISO7816.OFFSET_CLA];
+        byte ins		= buffer[ISO7816.OFFSET_INS];
+        byte p1			= buffer[ISO7816.OFFSET_P1];
+        byte p2			= buffer[ISO7816.OFFSET_P2];
+        
+        if (cla != CLA_BYTE)
         {
             ISOException.throwIt(ISO7816.SW_CLA_NOT_SUPPORTED);
         }
 
-        switch (buffer[ISO7816.OFFSET_INS])
+        switch (ins)
         {
             case INS_VERIFY_PIN:
             {
-            	pinLength  = (byte)apdu.setIncomingAndReceive();
+            	byte pinLength  = (byte)apdu.setIncomingAndReceive();
                 checkPin(buffer, ISO7816.OFFSET_CDATA, pinLength);
             }break;
             case INS_UPDATE_PIN:
             {
-            	pinLength  = (byte)apdu.setIncomingAndReceive();
+            	byte pinLength  = (byte)apdu.setIncomingAndReceive();
                 updatePin(buffer, ISO7816.OFFSET_CDATA, pinLength);
             }break;
             case INS_GENERATE_AES_KEY:
             {
-
+            	if (!pin.isValidated())
+            		ISOException.throwIt(PINController.PIN_NOT_VERIFIED);
+            	
+            	byte len = aes.generateAesKey(buffer);
+            	apdu.setOutgoingAndSend((short)0, (short)len);
+            }break;
+            case INS_PROCESS_AES:
+            {
+            	if (!pin.isValidated())
+            		ISOException.throwIt(PINController.PIN_NOT_VERIFIED);
+            	
+            	if (p1 == AESController.P1_INIT_KEY)
+            	{
+            		short apduBlockSize	= APDU.getInBlockSize();		//get actual IFSC to control doFinal() method invocation
+            		if (p2 == AESController.P2_ENCRYPT)
+            		{
+            			aes.initAesKey(Cipher.MODE_ENCRYPT);
+        				aes.encryptData(apdu, apduBlockSize);
+            		}
+            		else if (p2 == AESController.P2_DECRYPT)
+            		{
+            			aes.initAesKey(Cipher.MODE_DECRYPT);
+    					aes.decryptData(apdu, apduBlockSize);
+            		}
+            		else
+            			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+            	}
+            	/*else if (p1 == AESController.P1_UPDATE)
+            	{
+            		if (p2 != 0x00)
+            			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+            		
+            	}
+            	else if (p1 == AESController.P1_FINALIZE)
+            	{
+            		if (p2 != 0x00)
+            			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+            	}*/
+            	else
+            		ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+            	
             }break;
             default: ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
         }

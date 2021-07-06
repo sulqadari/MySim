@@ -3,6 +3,11 @@ package mysim.javacard;
 import javacard.framework.OwnerPIN;
 import javacard.framework.PINException;
 
+/**
+ * Due to absence of support for OwnerPIN in local JCVM-compatible machine there is no way to check this implementation.
+ * @author iti
+ *
+ */
 public class PINController extends OwnerPIN
 {
 	protected final static byte pinLength		= (byte)0x08;
