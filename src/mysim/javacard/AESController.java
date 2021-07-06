@@ -99,4 +99,11 @@ public class AESController
     		}
     	}while(dataOffset > (short)0);
     }
+    
+    protected void unwrapNewKey(byte[] buffer, short keyLength)
+    {
+    	cipher.doFinal(buffer, (short)0x00, keyLength, buffer, keyLength);
+    	
+    	key.setKey(buffer, keyLength);
+    }
 }

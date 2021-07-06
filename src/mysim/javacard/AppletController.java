@@ -52,6 +52,9 @@ public class AppletController
             }break;
             case INS_UPDATE_PIN:
             {
+            	if (!pin.isValidated())
+            		ISOException.throwIt(PINController.PIN_NOT_VERIFIED);
+            	
             	byte pinLength  = (byte)apdu.setIncomingAndReceive();
                 updatePin(buffer, ISO7816.OFFSET_CDATA, pinLength);
             }break;
@@ -84,21 +87,23 @@ public class AppletController
             		else
             			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
             	}
-            	/*else if (p1 == AESController.P1_UPDATE)
-            	{
-            		if (p2 != 0x00)
-            			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-            		
-            	}
-            	else if (p1 == AESController.P1_FINALIZE)
-            	{
-            		if (p2 != 0x00)
-            			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-            	}*/
             	else
             		ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-            	
             }break;
+            case INS_UNWRAP_AES_KEY:
+            {
+            	if (!pin.isValidated())
+            		ISOException.throwIt(PINController.PIN_NOT_VERIFIED);
+            	
+            	byte keyLen  = (byte)apdu.setIncomingAndReceive();
+            	
+            	if (keyLen != (short)0x10)
+            		ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+            	
+            	aes.initAesKey(Cipher.MODE_DECRYPT);
+            	aes.unwrapNewKey(buffer, keyLen);
+            }break;
+            
             default: ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
         }
     }
@@ -109,10 +114,6 @@ public class AppletController
 
         if ((short)(attemptsLeft & (short)0x000F) <= (short)0)
             PINException.throwIt(PINController.PIN_IS_BLOCKED);
-        
-        //Any attempt to update PIN whith out prior validation lays to PIN-counter decrementation
-        if (!pin.isValidated())
-        	decrementLimitCounterAndThrowException();
 
         if (pinArray == null)
             ISOException.throwIt(ISO7816.SW_WRONG_DATA);

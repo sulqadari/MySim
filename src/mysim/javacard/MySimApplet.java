@@ -57,4 +57,3 @@ public class MySimApplet extends javacard.framework.Applet
         controller.resetPin();
     }
 }
-
