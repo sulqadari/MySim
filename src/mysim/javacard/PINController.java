@@ -1,46 +1,129 @@
 package mysim.javacard;
 
-import javacard.framework.OwnerPIN;
-import javacard.framework.PINException;
+import javacard.framework.ISOException;
+import javacard.framework.Util;
 
-public class PINController extends OwnerPIN
+/**
+ * 
+ */
+public class PINController
 {
-    final static short PIN_IS_BLOCKED   = (short)0x6983;
-    final static short PIN_NOT_VERIFIED = (short)0x6982;
-    private short pinLimitCounter       = (short)0x63C0;
-
-    public PINController(byte tryLimit, byte maxPINSize) throws PINException
-    {
-        super(tryLimit, maxPINSize);
-    }
-
+	public static final short SW_PIN_ILLEGAL_VALUE	= (short)0x6A85;
+	public static final short SW_PIN_IS_BLOCKED		= (short)0x6983;
+	public static final short SW_PIN_NOT_VERIFIED	= (short)0x6982;
+    
+	private byte[] pinValue				= new byte[8];
+	private byte pinLimit				= (byte)0;
+	private byte pinLength				= (byte)8;
+	private short pinCounter			= (short)0x63C0;
+	private boolean isValidated			= false;
+	
     /**
-     * Assigns <code>pinLimitCounter</code> with <code>OwnerPIN.tryLimit</code> initial value.<br>
-     * To prevent redundant EEPROM writing operations this method checks for correct PIN input
-     * at the first try.
-     * @param initTriesCounter     initial tries counter value which retreived from the
-     *                             <code>OwnerPIN.getTriesRemaining()</code> method invocation.<br>
-     *                             When the correct PIN is entered the <code>OwnerPIN.check()</code> method<br>
-     *                             sets the tries counter to its maximum value.
+     * 
+     * @param tryLimit
+     * @param maxPINSize
      */
-    protected void setPinCounter(byte initTriesCounter)
+    public PINController(byte tryLimit, byte maxPINSize) throws ISOException
     {
-        if ((short)(pinLimitCounter & (short)0x000F) == (short)initTriesCounter)
-        {
-            return;
-        }
-
-        pinLimitCounter &= (short)0xFFF0;
-        pinLimitCounter += initTriesCounter;
+    	if ((tryLimit > pinLimit) || (maxPINSize != pinLength))
+    		ISOException.throwIt(SW_PIN_ILLEGAL_VALUE);
+    	
+    	pinLimit	= tryLimit;
+    	pinLength	= maxPINSize;
+    	pinCounter	= (short)((pinCounter & (short)0xFFF0) | tryLimit);
     }
-
-    protected void decrementLimitCounter()
+    
+    /**
+     * 
+     * @param pinArr
+     * @param pinOff
+     * @param pinLen
+     * @return
+     */
+    protected boolean check(byte[] pinArr, short pinOff, byte pinLen)
     {
-        pinLimitCounter--;
+    	if (pinCounter <= (short)0)
+    		return isValidated = false;
+    	
+    	if ((pinArr == null) || (pinLen != pinLength) || (pinOff < (short)0))
+    	{
+    		pinCounter--;
+	    	return isValidated = false;
+    	}
+    	else if ((pinOff + pinLen) > pinLength)
+    	{
+    		pinCounter--;
+    		return isValidated = false;
+    	}
+    	byte result = Util.arrayCompare(pinArr, pinOff, pinValue, (short)0, pinLen);
+    	
+    	if (result == 0)
+    	{
+    		
+    		resetPinCounter();
+    		return isValidated = true;
+    	}
+    	else
+    	{
+    		pinCounter--;
+    		return isValidated = false;
+    	}
     }
-
-    protected short getLimitCounter()
+    
+    protected void update(byte[] pinArr, short pinOff, byte pinLen)
     {
-        return pinLimitCounter;
+    	if ((pinArr == null) || ((pinOff + pinLen) > pinLength) || (pinLen > pinLength) || (pinLen < (byte)1))
+    		ISOException.throwIt(SW_PIN_ILLEGAL_VALUE);
+    	
+    	Util.arrayCopy(pinArr, pinOff, pinValue, (short)0, pinLen);
+    }
+    
+    /**
+     * 
+     * @return
+     */
+    protected short getTriesRemaining()
+    {
+        return pinCounter;
+    }
+    
+    protected void dectementPinCounter()
+    {
+    	pinCounter--;
+    }
+    
+    /**
+     * 
+     * @return
+     */
+    protected boolean isValidated()
+    {
+    	return isValidated;
+    }
+    
+    /**
+     * 
+     */
+    protected void reset()
+    {
+    	if (isValidated)
+    	{
+    		isValidated = false;
+    		resetPinCounter();
+    		return;
+    	}
+    	return;
+    }
+    
+    /**
+     * Assigns <code>pinLimitCounter</code> with the initial value.<br>
+     * To avoid redundant EEPROM rewriting operations this method checks for the correct PIN input from the first try.
+     */
+    private void resetPinCounter()
+    {
+        if ((pinCounter & (short)0x000F) == (short)pinLimit)
+        	return;
+
+        pinCounter = (short)((pinCounter & (short)0xFFF0) | ((short)pinLimit & (short)0x000F));
     }
 }

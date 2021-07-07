@@ -1,148 +1,156 @@
 package mysim.javacard;
 
-import javacard.framework.*;
+import javacard.framework.APDU;
+import javacard.framework.ISO7816;
+import javacard.framework.ISOException;
+import javacardx.crypto.Cipher;
 
 public class AppletController
 {
-    private static byte APPLET_LIFE_PHASE               = (byte)0x00;
-    private static final byte APPLET_LIFE_PHASE_INIT    = (byte)0x03;
-    private static final byte APPLET_LIFE_PHASE_USE     = (byte)0x07;
+	private static final byte CLA_BYTE		= (byte)0x80;
+    static final byte INS_VERIFY_PIN		= (byte)0x20;
+    static final byte INS_UPDATE_PIN		= (byte)0x22;
 
-    private static final byte CLA_BYTE                  = (byte)0x80;
-    private static final byte INS_VERIFY_PIN            = (byte)0x20;
-    private static final byte INS_UPDATE_PIN            = (byte)0x22;
+    static final byte INS_GENERATE_AES_KEY	= (byte)0x50;
+    static final byte INS_UNWRAP_AES_KEY	= (byte)0x52;
+    static final byte INS_AES_CALC_KCV		= (byte)0x54;
+    static final byte INS_PROCESS_AES		= (byte)0x56;
 
-    private static PINController pin                    = null;
-    private RSAController rsa                           = null;
-    private AESController aes                           = null;
+    private PINController pin				= null;
+    private AESController aes				= null;
 
-    protected AppletController(byte tryLimit, byte maxPINSize) throws PINException
+    protected AppletController(byte[] pinArr, short pinOff, byte pinLen, byte tryLimit) throws ISOException
     {
-        pin    = new PINController(tryLimit, maxPINSize);
-        rsa    = new RSAController();
-        aes    = new AESController();
+    	pin	= new PINController(tryLimit, pinLen);
+    	aes	= new AESController();
+    	pin.update(pinArr, pinOff, pinLen);
     }
 
     protected void process(APDU apdu)
     {
-        if (pin.getTriesRemaining() == 0)
-        {
-            PINException.throwIt(PINController.PIN_IS_BLOCKED);
-        }
-
         byte[] buffer   = apdu.getBuffer();
-        byte pinLength  = (byte)apdu.setIncomingAndReceive();
-
-        if (buffer[ISO7816.OFFSET_CLA] != CLA_BYTE)
+        
+        byte cla		= buffer[ISO7816.OFFSET_CLA];
+        byte ins		= buffer[ISO7816.OFFSET_INS];
+        byte p1			= buffer[ISO7816.OFFSET_P1];
+        byte p2			= buffer[ISO7816.OFFSET_P2];
+        
+        if (cla != CLA_BYTE)
         {
             ISOException.throwIt(ISO7816.SW_CLA_NOT_SUPPORTED);
         }
 
-        switch (buffer[ISO7816.OFFSET_INS])
+        switch (ins)
         {
             case INS_VERIFY_PIN:
             {
+            	byte pinLength  = (byte)apdu.setIncomingAndReceive();
                 checkPin(buffer, ISO7816.OFFSET_CDATA, pinLength);
             }break;
             case INS_UPDATE_PIN:
             {
+            	byte pinLength  = (byte)apdu.setIncomingAndReceive();
                 updatePin(buffer, ISO7816.OFFSET_CDATA, pinLength);
             }break;
+            case INS_GENERATE_AES_KEY:
+            {
+            	if (!pin.isValidated())
+            		ISOException.throwIt(PINController.SW_PIN_NOT_VERIFIED);
+            	
+            	byte len = aes.generateAesKey(buffer);
+            	apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, (short)len);
+            }break;
+            case INS_PROCESS_AES:
+            {
+            	if (!pin.isValidated())
+            		ISOException.throwIt(PINController.SW_PIN_NOT_VERIFIED);
+            	
+            	if (p1 == AESController.P1_INIT_KEY)
+            	{
+            		short apduBlockSize	= APDU.getInBlockSize();		//get actual IFSC to control doFinal() method invocation
+            		if (p2 == AESController.P2_ENCRYPT)
+            		{
+            			aes.initAesKey(Cipher.MODE_ENCRYPT);
+        				aes.encryptData(apdu, apduBlockSize);
+            		}
+            		else if (p2 == AESController.P2_DECRYPT)
+            		{
+            			aes.initAesKey(Cipher.MODE_DECRYPT);
+    					aes.decryptData(apdu, apduBlockSize);
+            		}
+            		else
+            			ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+            	}
+            	else
+            		ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+            }break;
+            case INS_UNWRAP_AES_KEY:
+            {
+            	if (!pin.isValidated())
+            		ISOException.throwIt(PINController.SW_PIN_NOT_VERIFIED);
+            	
+            	byte keyLen  = (byte)apdu.setIncomingAndReceive();
+            	
+            	if (keyLen != (short)0x10)
+            		ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+            	
+            	aes.initAesKey(Cipher.MODE_DECRYPT);
+            	aes.unwrapNewKey(buffer, keyLen);
+            }break;
+            case INS_AES_CALC_KCV:
+            {
+            	if (!pin.isValidated())
+            		ISOException.throwIt(PINController.SW_PIN_NOT_VERIFIED);
+            	
+            	aes.initAesKey(Cipher.MODE_ENCRYPT);
+            	aes.calculateKcv(buffer);
+            }break;
+            
             default: ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
         }
     }
-
-    protected static void updatePin(byte[] pinArray, short offset, byte length)
+    
+    protected void updatePin(byte[] pinArray, short pinOffset, byte pinLength)
     {
-        if (pinArray == null)
+    	short attemptsLeft = pin.getTriesRemaining();
+
+        if ((short)((short)attemptsLeft & (short)0x000F) <= (short)0)
+        	ISOException.throwIt(PINController.SW_PIN_IS_BLOCKED);
+        
+        if (!pin.isValidated())
+        	ISOException.throwIt(PINController.SW_PIN_NOT_VERIFIED);
+        
+        if ((pinOffset + pinLength) > pinArray.length)
             ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 
-        if ((pinOffset + pinLength) > buffer.length)
-            ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-
-        if (length != (byte)8)
-            PINException.throwIt(PINException.ILLEGAL_VALUE);
-
-        if (APPLET_LIFE_PHASE == APPLET_LIFE_PHASE_INIT)
-            updatePinOnInit(pinArray, offset, length);
-
-        else if (APPLET_LIFE_PHASE == APPLET_LIFE_PHASE_USE)
-            updatePinOnUse(pinArray, offset, length);
+    	pin.update(pinArray, pinOffset, pinLength);
+        pin.reset();												//...reset SW_63Cx to initial value
+        
     }
 
-    private static void updatePinOnInit(byte[] pinArray, short offset, byte length)
+    private void checkPin(byte[] pinArray, byte pinOffset, byte pinLength) throws ISOException, NullPointerException, ArrayIndexOutOfBoundsException
     {
-        byte attemptsLeft = 0;
+    	short attemptsLeft = pin.getTriesRemaining();
+    	attemptsLeft &= (short)0x000F;
+    	
+    	if ((short)((short)attemptsLeft & (short)0x000F) <= (short)0)		//If no attempts left
+        	ISOException.throwIt(PINController.SW_PIN_IS_BLOCKED);
 
-        JCSystem.beginTransaction();                                //For the sake of PIN integrity...
-
-        pin.update(pinArray, offset, length);
-        attemptsLeft = pin.getTriesRemaining();
-        pin.setPinCounter(attemptsLeft);                        //...reset SW_63Cx to initial value
-
-        JCSystem.commitTransaction();                               //...PIN must be updated using atomicity facility.
-    }
-
-    private static void updatePinOnUse(byte[] pinArray, short offset, byte length)
-    {
-        boolean isValid     = pin.isValidated();
-        byte attemptsLeft   = 0;
+        boolean isValid = pin.check(pinArray, pinOffset, pinLength);//verify PIN
 
         if (!isValid)
-            PINException.throwIt(PINController.PIN_NOT_VERIFIED);
-
-        JCSystem.beginTransaction();                                //For the sake of PIN integrity...
-
-        pin.update(pinArray, offset, length);
-        attemptsLeft = pin.getTriesRemaining();
-        pin.setPinCounter(attemptsLeft);                        //...reset SW_63Cx to initial value
-
-        JCSystem.commitTransaction();                               //...PIN must be updated using atomicity facility.
+        	throwAttemptsRemainig();
+        	
     }
 
-    private void checkPin(byte[] buffer, byte pinOffset, byte pinLength) throws ISOException, NullPointerException, ArrayIndexOutOfBoundsException
+    private void throwAttemptsRemainig()
     {
-        byte attemptsLeft = pin.getTriesRemaining();
-
-        if (attemptsLeft <= 0)
-            PINException.throwIt(PINController.PIN_IS_BLOCKED);
-
-        if (buffer == null)
-            decrementLimitCounterAndThrowException();
-
-        if ((pinOffset + pinLength) > buffer.length)
-            decrementLimitCounterAndThrowException();
-
-        boolean isSet = pin.check(buffer, pinOffset, pinLength);    //verify PIN
-
-        if (isSet)                                                  //if PIN successfully verified...
-        {
-            attemptsLeft = pin.getTriesRemaining();
-            pin.setPinCounter(attemptsLeft);                        //...reset SW_63Cx to initial value
-        }
-        else
-        {
-            decrementLimitCounterAndThrowException();
-        }
-    }
-
-    private void decrementLimitCounterAndThrowException()
-    {
-        pin.decrementLimitCounter();                            //...decrement SW_63Cx...
-        short triesCounter = pin.getLimitCounter();             //...get current SW_63Cx value...
-        ISOException.throwIt(triesCounter);                     //...and pass it as the exception argument
+        short triesCounter = pin.getTriesRemaining();             	//...get current SW_63Cx value...
+        ISOException.throwIt(triesCounter);                     	//...and pass it as the exception argument
     }
 
     protected void resetPin()
     {
         pin.reset();
-    }
-
-    protected void changeAppletLifePhase()
-    {
-        if (APPLET_LIFE_PHASE == 0x00)
-            APPLET_LIFE_PHASE = APPLET_LIFE_PHASE_INIT;
-        else if (APPLET_LIFE_PHASE == APPLET_LIFE_PHASE_INIT)
-            APPLET_LIFE_PHASE = APPLET_LIFE_PHASE_USE;
     }
 }
