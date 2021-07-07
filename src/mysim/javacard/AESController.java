@@ -41,7 +41,7 @@ public class AESController
     	if (key == null)
     		key = (AESKey)KeyBuilder.buildKey(KeyBuilder.TYPE_AES, KeyBuilder.LENGTH_AES_128, false);
     	
-    	return key.getKey(buffer, (short)0);
+    	return key.getKey(buffer, ISO7816.OFFSET_CDATA);
     }
     
     protected void initAesKey(byte mode)
@@ -64,11 +64,11 @@ public class AESController
 		short read_count	= apdu.setIncomingAndReceive();							//Actual data received
 		dataOffset			+= read_count;
 		
+		if (dataOffset > data.length)
+	    	ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+			
 		do
 		{
-			if (dataOffset > data.length)
-	    		ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-			
 			if (read_count > apduBlockSize)
 				cipher.update(buffer, ISO7816.OFFSET_CDATA, read_count, data, dataOffset);
 			else

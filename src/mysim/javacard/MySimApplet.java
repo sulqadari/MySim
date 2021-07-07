@@ -2,30 +2,24 @@ package mysim.javacard;
 
 import javacard.framework.APDU;
 import javacard.framework.ISOException;
-import javacard.framework.JCSystem;
 
 /**
  * Main class which implements functionality of the <code>javacard.framework.MySimApplet</code>.<br>
  */
 public class MySimApplet extends javacard.framework.Applet
 {
-    private static AppletController controller  = null;     //Contains main functionality
-
+    private AppletController controller  = null;     //Contains main functionality
+ 
     /**
      * Main constructor.<br>
-     * This constructor initializes the instance of the <code>AppletConstructor</code> class
+     * This constructor initializes the instance of the <code>AppletConstructor</code> class which
      * encapsulates main functionality and security features of the this MySimApplet.
-     * @param pinTryLimit   the upper bound of the PIN attempts limit. Up to 9 tries.
-     * @param pinSize       the maximum size of the PIN. Can't exceed 8 bytes
      *
      */
-    private MySimApplet(byte pinTryLimit, byte pinSize)
+    private MySimApplet(byte[] pinArr, short pinOff, byte pinLen, byte tryLimit)
     {
-        if ((pinTryLimit > (byte)9) || (pinSize != (byte)8))
-        {
-            PINException.throwIt(PINException.ILLEGAL_VALUE);
-        }
-        controller  = new AppletController(pinTryLimit, pinSize);
+        controller  = new AppletController(pinArr, pinOff, pinLen, tryLimit);
+        
     }
 
     /**
@@ -38,18 +32,15 @@ public class MySimApplet extends javacard.framework.Applet
      */
     public static void install(byte[] bArray, short bOffset, byte bLength) throws ISOException
     {
-        byte pinTryLimit    = bArray[0];
-        byte pinLength      = bArray[1];
-        short pinOffset     = bArray[2];
-
-        new MySimApplet(pinTryLimit, pinLength).register();
-
-        changeAppletLifePhase();                            //Change applet life phase to INIT
-        controller.updatePin(bArray, pinOffset, pinLength);
-        changeAppletLifePhase();                            //Change applet life phase to USE
+    	byte tryLim		= bArray[bArray[0] + 3];		//Try-limit byte comes first in input array.
+    	short pinOff	= (short)(bArray[0] + 4);		//PIN array starts right after try-limit byte.
+    	byte pinLen		= (byte)bArray[bArray[0] + 2];	//The len_tag of the incoming data encapsulates not only PIN array, but try counter too...
+    	pinLen			-=(byte)1;						//...so if the length of the PIN is 8, the len-tag contains 9 and 1 byte must be subtracted
+    	
+    	new MySimApplet(bArray, pinOff, pinLen, tryLim).register();
+        
     }
 
-    @Override
     public void process(APDU apdu) throws ISOException
     {
         if (selectingApplet())
@@ -60,7 +51,6 @@ public class MySimApplet extends javacard.framework.Applet
         controller.process(apdu);
     }
 
-    @Override
     public boolean select()
     {
        controller.resetPin();
