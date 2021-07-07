@@ -1,13 +1,13 @@
 package mysim.javacard;
 
-import javacard.framework.*;
+import javacard.framework.APDU;
+import javacard.framework.ISO7816;
+import javacard.framework.ISOException;
 import javacardx.crypto.Cipher;
 
 public class AppletController
 {
-	private final byte[] pinArray				= {(byte)0x11, (byte)0x22, (byte)0x33, (byte)0x44, (byte)0x55, (byte)0x66, (byte)0x77, (byte)0x88};
-	
-    private static final byte CLA_BYTE		= (byte)0x80;
+	private static final byte CLA_BYTE		= (byte)0x80;
     static final byte INS_VERIFY_PIN		= (byte)0x20;
     static final byte INS_UPDATE_PIN		= (byte)0x22;
 
@@ -17,16 +17,13 @@ public class AppletController
     static final byte INS_PROCESS_AES		= (byte)0x56;
 
     private PINController pin				= null;
-    private RSAController rsa				= null;
     private AESController aes				= null;
 
-    protected AppletController() throws PINException
+    protected AppletController(byte[] pinArr, short pinOff, byte pinLen, byte tryLimit) throws ISOException
     {
-    	pin	= new PINController();
-    	pin.update(pinArray, (short)0, PINController.pinLength);
-    	
-    	rsa	= new RSAController();
+    	pin	= new PINController(tryLimit, pinLen);
     	aes	= new AESController();
+    	pin.update(pinArr, pinOff, pinLen);
     }
 
     protected void process(APDU apdu)
@@ -52,24 +49,21 @@ public class AppletController
             }break;
             case INS_UPDATE_PIN:
             {
-            	if (!pin.isValidated())
-            		ISOException.throwIt(PINController.PIN_NOT_VERIFIED);
-            	
             	byte pinLength  = (byte)apdu.setIncomingAndReceive();
                 updatePin(buffer, ISO7816.OFFSET_CDATA, pinLength);
             }break;
             case INS_GENERATE_AES_KEY:
             {
             	if (!pin.isValidated())
-            		ISOException.throwIt(PINController.PIN_NOT_VERIFIED);
+            		ISOException.throwIt(PINController.SW_PIN_NOT_VERIFIED);
             	
             	byte len = aes.generateAesKey(buffer);
-            	apdu.setOutgoingAndSend((short)0, (short)len);
+            	apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, (short)len);
             }break;
             case INS_PROCESS_AES:
             {
             	if (!pin.isValidated())
-            		ISOException.throwIt(PINController.PIN_NOT_VERIFIED);
+            		ISOException.throwIt(PINController.SW_PIN_NOT_VERIFIED);
             	
             	if (p1 == AESController.P1_INIT_KEY)
             	{
@@ -93,7 +87,7 @@ public class AppletController
             case INS_UNWRAP_AES_KEY:
             {
             	if (!pin.isValidated())
-            		ISOException.throwIt(PINController.PIN_NOT_VERIFIED);
+            		ISOException.throwIt(PINController.SW_PIN_NOT_VERIFIED);
             	
             	byte keyLen  = (byte)apdu.setIncomingAndReceive();
             	
@@ -103,58 +97,55 @@ public class AppletController
             	aes.initAesKey(Cipher.MODE_DECRYPT);
             	aes.unwrapNewKey(buffer, keyLen);
             }break;
+            case INS_AES_CALC_KCV:
+            {
+            	if (!pin.isValidated())
+            		ISOException.throwIt(PINController.SW_PIN_NOT_VERIFIED);
+            	
+            	aes.initAesKey(Cipher.MODE_ENCRYPT);
+            	aes.calculateKcv(buffer);
+            }break;
             
             default: ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
         }
     }
-
+    
     protected void updatePin(byte[] pinArray, short pinOffset, byte pinLength)
     {
-    	short attemptsLeft = pin.getLimitCounter();
+    	short attemptsLeft = pin.getTriesRemaining();
 
-        if ((short)(attemptsLeft & (short)0x000F) <= (short)0)
-            PINException.throwIt(PINController.PIN_IS_BLOCKED);
-
-        if (pinArray == null)
-            ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-
+        if ((short)((short)attemptsLeft & (short)0x000F) <= (short)0)
+        	ISOException.throwIt(PINController.SW_PIN_IS_BLOCKED);
+        
+        if (!pin.isValidated())
+        	ISOException.throwIt(PINController.SW_PIN_NOT_VERIFIED);
+        
         if ((pinOffset + pinLength) > pinArray.length)
             ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 
-        if (pinLength != PINController.pinLength)
-            PINException.throwIt(PINException.ILLEGAL_VALUE);
-
-        JCSystem.beginTransaction();								//For the sake of PIN integrity it is must be updated using atomicity facility.  
     	pin.update(pinArray, pinOffset, pinLength);
-        pin.resetPinCounter();										//...reset SW_63Cx to initial value
-        JCSystem.commitTransaction();								//...PIN 
+        pin.reset();												//...reset SW_63Cx to initial value
+        
     }
 
     private void checkPin(byte[] pinArray, byte pinOffset, byte pinLength) throws ISOException, NullPointerException, ArrayIndexOutOfBoundsException
     {
-    	short attemptsLeft = pin.getLimitCounter();
-
-        if ((short)(attemptsLeft & (short)0x000F) <= (short)0)		//If no attempts left
-            PINException.throwIt(PINController.PIN_IS_BLOCKED);
-
-        if (pinArray == null)
-            decrementLimitCounterAndThrowException();
-
-        if ((pinOffset + pinLength) > pinArray.length)
-            decrementLimitCounterAndThrowException();
+    	short attemptsLeft = pin.getTriesRemaining();
+    	attemptsLeft &= (short)0x000F;
+    	
+    	if ((short)((short)attemptsLeft & (short)0x000F) <= (short)0)		//If no attempts left
+        	ISOException.throwIt(PINController.SW_PIN_IS_BLOCKED);
 
         boolean isValid = pin.check(pinArray, pinOffset, pinLength);//verify PIN
 
-        if (isValid)												//if PIN successfully verified...
-	        pin.resetPinCounter();                       			//...reset SW_63Cx to maximum value
-        else
-	        decrementLimitCounterAndThrowException();
+        if (!isValid)
+        	throwAttemptsRemainig();
+        	
     }
 
-    private void decrementLimitCounterAndThrowException()
+    private void throwAttemptsRemainig()
     {
-        pin.decrementLimitCounter();                            	//...decrement SW_63Cx...
-        short triesCounter = pin.getLimitCounter();             	//...get current SW_63Cx value...
+        short triesCounter = pin.getTriesRemaining();             	//...get current SW_63Cx value...
         ISOException.throwIt(triesCounter);                     	//...and pass it as the exception argument
     }
 

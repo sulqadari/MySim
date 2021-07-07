@@ -21,11 +21,14 @@ public class AESController
     private AESKey key;
     private byte[] data;
     private short dataOffset;
+    private byte[] keyCheckValue;
+    
     protected AESController()
     {
-    	cipher		= Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_CBC_NOPAD, false);
-    	data		= new byte[512];
-    	dataOffset	= (short)0;
+    	cipher			= Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_CBC_NOPAD, false);
+    	data			= new byte[512];
+    	keyCheckValue	= new byte[3];
+    	dataOffset		= (short)0;
     }
     
     /**
@@ -54,6 +57,9 @@ public class AESController
 
     protected void encryptData(APDU apdu, short apduBlockSize)
     {
+		if (key == null)
+    		CryptoException.throwIt(CryptoException.INVALID_INIT);
+		
     	byte[] buffer		= apdu.getBuffer();
 		short read_count	= apdu.setIncomingAndReceive();							//Actual data received
 		dataOffset			+= read_count;
@@ -64,17 +70,20 @@ public class AESController
 	    		ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 			
 			if (read_count > apduBlockSize)
-				cipher.update(buffer, (short)0, read_count, data, dataOffset);
+				cipher.update(buffer, ISO7816.OFFSET_CDATA, read_count, data, dataOffset);
 			else
-				cipher.doFinal(buffer, (short)0, read_count, data, dataOffset);
+				cipher.doFinal(buffer, ISO7816.OFFSET_CDATA, read_count, data, dataOffset);
 
-			read_count	= apdu.receiveBytes((short)0);								//if there is no data anymore...
+			read_count	= apdu.receiveBytes(ISO7816.OFFSET_CDATA);								//if there is no data anymore...
 			dataOffset	+= read_count;
 		}while(read_count > 0);														//... get out from the loop
     }
 
     protected void decryptData(APDU apdu, short apduBlockSize)
     {
+		if (key == null)
+    		CryptoException.throwIt(CryptoException.INVALID_INIT);
+		
     	byte[] buffer	= apdu.getBuffer();
     	short offset	= 0;
     	short dLen		= dataOffset;
@@ -84,16 +93,16 @@ public class AESController
     	{
     		if (dLen < apduBlockSize)
     		{
-    			cipher.doFinal(data, offset, dLen, buffer, (short)0);
+    			cipher.doFinal(data, offset, dLen, buffer, ISO7816.OFFSET_CDATA);
     			apdu.setOutgoingLength(dataOffset);
-    			apdu.sendBytes((short)0, dataOffset);
+    			apdu.sendBytes(ISO7816.OFFSET_CDATA, dataOffset);
     			dataOffset = 0;
     		}
     		else
     		{
-    			cipher.update(data, offset, apduBlockSize, buffer, (short)0);
+    			cipher.update(data, offset, apduBlockSize, buffer, ISO7816.OFFSET_CDATA);
     			apdu.setOutgoingLength(apduBlockSize);
-    			apdu.sendBytes((short)0, apduBlockSize);
+    			apdu.sendBytes(ISO7816.OFFSET_CDATA, apduBlockSize);
     			offset += apduBlockSize;
     			dLen -= apduBlockSize;
     		}
@@ -102,8 +111,19 @@ public class AESController
     
     protected void unwrapNewKey(byte[] buffer, short keyLength)
     {
-    	cipher.doFinal(buffer, (short)0x00, keyLength, buffer, keyLength);
+    	short outputOff = (short)(ISO7816.OFFSET_CDATA + keyLength);
+    	cipher.doFinal(buffer, ISO7816.OFFSET_CDATA, keyLength, buffer, outputOff);
     	
-    	key.setKey(buffer, keyLength);
+    	key.setKey(buffer, outputOff);
+    }
+    
+    protected void calculateKcv(byte[] buffer)
+    {
+    	short kcvOff = (short)(ISO7816.OFFSET_CDATA + (short)0x10);
+    	
+    	cipher.doFinal(buffer, ISO7816.OFFSET_CDATA, (short)0x10, buffer, kcvOff);
+    	
+    	for (short i = 0; i < keyCheckValue.length; ++i)
+    		keyCheckValue[i] = buffer[(short)(kcvOff + i)];
     }
 }

@@ -16,9 +16,9 @@ public class MySimApplet extends javacard.framework.Applet
      * encapsulates main functionality and security features of the this MySimApplet.
      *
      */
-    private MySimApplet()
+    private MySimApplet(byte[] pinArr, short pinOff, byte pinLen, byte tryLimit)
     {
-        controller  = new AppletController();
+        controller  = new AppletController(pinArr, pinOff, pinLen, tryLimit);
         
     }
 
@@ -32,7 +32,12 @@ public class MySimApplet extends javacard.framework.Applet
      */
     public static void install(byte[] bArray, short bOffset, byte bLength) throws ISOException
     {
-        new MySimApplet().register();
+    	byte tryLim		= bArray[bArray[0] + 3];		//Try-limit byte comes first in input array.
+    	short pinOff	= (short)(bArray[0] + 4);		//PIN array starts right after try-limit byte.
+    	byte pinLen		= (byte)bArray[bArray[0] + 2];	//The len_tag of the incoming data encapsulates not only PIN array, but try counter too...
+    	pinLen			-=(byte)1;						//...so if the length of the PIN is 8, the len-tag contains 9 and 1 byte must be subtracted
+    	
+    	new MySimApplet(bArray, pinOff, pinLen, tryLim).register();
         
     }
 
