@@ -1,5 +1,6 @@
 package mysim.javacard;
 
+import javacard.framework.ISO7816;
 import javacard.framework.ISOException;
 import javacard.framework.Util;
 
@@ -17,22 +18,22 @@ public class PINController
 	private byte pinLength				= (byte)8;
 	private short pinCounter			= (short)0x63C0;
 	private boolean isValidated			= false;
-	
+
     /**
      * 
      * @param tryLimit
      * @param maxPINSize
      */
-    public PINController(byte tryLimit, byte maxPINSize) throws ISOException
+    public PINController(byte tryLimit, byte maxPINSize)
     {
-    	if ((tryLimit > pinLimit) || (maxPINSize != pinLength))
-    		ISOException.throwIt(SW_PIN_ILLEGAL_VALUE);
+    	if ((tryLimit > (byte)0x09) || (maxPINSize != (byte)0x08))
+    		ISOException.throwIt(ISO7816.SW_UNKNOWN);
     	
     	pinLimit	= tryLimit;
     	pinLength	= maxPINSize;
     	pinCounter	= (short)((pinCounter & (short)0xFFF0) | tryLimit);
     }
-    
+
     /**
      * 
      * @param pinArr
@@ -50,18 +51,14 @@ public class PINController
     		pinCounter--;
 	    	return isValidated = false;
     	}
-    	else if ((pinOff + pinLen) > pinLength)
-    	{
-    		pinCounter--;
-    		return isValidated = false;
-    	}
+
     	byte result = Util.arrayCompare(pinArr, pinOff, pinValue, (short)0, pinLen);
     	
     	if (result == 0)
     	{
-    		
     		resetPinCounter();
-    		return isValidated = true;
+    		 isValidated = true;
+    		return isValidated;
     	}
     	else
     	{
@@ -72,7 +69,7 @@ public class PINController
     
     protected void update(byte[] pinArr, short pinOff, byte pinLen)
     {
-    	if ((pinArr == null) || ((pinOff + pinLen) > pinLength) || (pinLen > pinLength) || (pinLen < (byte)1))
+    	if ((pinArr == null) || (pinLen != (byte)8))
     		ISOException.throwIt(SW_PIN_ILLEGAL_VALUE);
     	
     	Util.arrayCopy(pinArr, pinOff, pinValue, (short)0, pinLen);

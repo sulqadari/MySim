@@ -25,7 +25,7 @@ public class AppletController
     	aes	= new AESController();
     	pin.update(pinArr, pinOff, pinLen);
     }
-
+    
     protected void process(APDU apdu)
     {
         byte[] buffer   = apdu.getBuffer();
@@ -53,7 +53,7 @@ public class AppletController
                 updatePin(buffer, ISO7816.OFFSET_CDATA, pinLength);
             }break;
             case INS_GENERATE_AES_KEY:
-            {
+          {
             	if (!pin.isValidated())
             		ISOException.throwIt(PINController.SW_PIN_NOT_VERIFIED);
             	
@@ -119,9 +119,6 @@ public class AppletController
         
         if (!pin.isValidated())
         	ISOException.throwIt(PINController.SW_PIN_NOT_VERIFIED);
-        
-        if ((pinOffset + pinLength) > pinArray.length)
-            ISOException.throwIt(ISO7816.SW_WRONG_DATA);
 
     	pin.update(pinArray, pinOffset, pinLength);
         pin.reset();												//...reset SW_63Cx to initial value
@@ -133,7 +130,7 @@ public class AppletController
     	short attemptsLeft = pin.getTriesRemaining();
     	attemptsLeft &= (short)0x000F;
     	
-    	if ((short)((short)attemptsLeft & (short)0x000F) <= (short)0)		//If no attempts left
+    	if ( attemptsLeft <= (short)0)		//If no attempts left
         	ISOException.throwIt(PINController.SW_PIN_IS_BLOCKED);
 
         boolean isValid = pin.check(pinArray, pinOffset, pinLength);//verify PIN
@@ -145,7 +142,7 @@ public class AppletController
 
     private void throwAttemptsRemainig()
     {
-        short triesCounter = pin.getTriesRemaining();             	//...get current SW_63Cx value...
+    	short triesCounter = pin.getTriesRemaining();             	//...get current SW_63Cx value...
         ISOException.throwIt(triesCounter);                     	//...and pass it as the exception argument
     }
 
