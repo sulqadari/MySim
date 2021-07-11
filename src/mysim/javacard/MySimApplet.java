@@ -5,7 +5,7 @@ import javacard.framework.ISOException;
 import javacard.framework.Util;
 
 /**
- * Main class which implements functionality of the <code>javacard.framework.MySimApplet</code>.<br>
+ * Main class which implements functionality of the <code>javacard.framework.Applet</code>.<br>
  */
 public class MySimApplet extends javacard.framework.Applet
 {
@@ -14,7 +14,7 @@ public class MySimApplet extends javacard.framework.Applet
     /**
      * Main constructor.<br>
      * This constructor initializes the instance of the <code>AppletConstructor</code> class which
-     * encapsulates main functionality and security features of the this MySimApplet.
+     * encapsulates main functionality and security features of the MySimApplet.
      *
      */
     private MySimApplet(byte[] pinArr, short pinOff, byte pinLen, byte tryLimit)
@@ -33,17 +33,12 @@ public class MySimApplet extends javacard.framework.Applet
      */
     public static void install(byte[] bArray, short bOffset, byte bLength) throws ISOException
     {
-    	byte aidLen		= bArray[(short)0];					//AID length
-    	byte tryLim		= bArray[(short)(aidLen + 3)];		//Try limit value
+    	byte aidOff		= bArray[bOffset + 1];
+		short pinOff	= (short)(bArray[bOffset] + (byte)4);
+		byte pinLen		= (byte)8;
+		byte tryLimCtr	= (byte)(bArray[bOffset] + (byte)3);
     	
-    	short pinOff	= (short)(bArray[0] + 4);		//PIN array starts right after try-limit byte.
-    	byte pinLen		= (byte)bArray[bArray[0] + 2];	//The len_tag of the incoming data encapsulates not only PIN array, but try counter too...
-    	pinLen			-=(byte)1;						//...so if the length of the PIN is 8, the len-tag contains 9 and 1 byte must be subtracted
-    	
-    	byte[] pinArr	= new byte[8];
-    	Util.arrayCopy(bArray, pinOff, pinArr, (short)0, pinLen);
-    	
-    	new MySimApplet(pinArr, (short)0, pinLen, tryLim).register();
+    	new MySimApplet(bArray, pinOff, pinLen, tryLimCtr).register();
     }
 
     public void process(APDU apdu) throws ISOException
